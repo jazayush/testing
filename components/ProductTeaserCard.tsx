@@ -403,7 +403,7 @@ export const ProductTeaserCard = (props: ProductTeaserCardProps) => {
                   </button>
                 </div>
               </div>
-
+            </div>
             <div className="mt-6 text-center">
               <p
                 className="text-sm text-[#666666]"
@@ -475,7 +475,6 @@ export const ProductTeaserCard = (props: ProductTeaserCardProps) => {
             )}
       </div>
     </motion.div>
-      </div >
     </section >
   )
 }
