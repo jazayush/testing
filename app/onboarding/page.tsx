@@ -24,11 +24,7 @@ export default function OnboardingPage() {
 
       console.log("[v0] Onboarding - Checking auth, user:", user?.id)
 
-      if (!user) {
-        console.log("[v0] Onboarding - No user found, redirecting to home")
-        router.push("/")
-        return
-      }
+     
 
       setUserId(user.id)
       setUserEmail(user.email || "")
