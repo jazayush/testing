@@ -1,0 +1,13 @@
+{
+  "/_not-found/page": "/_not-found",
+  "/onboarding/page": "/onboarding",
+  "/page": "/",
+  "/dashboard/history/page": "/dashboard/history",
+  "/dashboard/help/page": "/dashboard/help",
+  "/dashboard/page": "/dashboard",
+  "/dashboard/analysis/page": "/dashboard/analysis",
+  "/dashboard/ask-setu/page": "/dashboard/ask-setu",
+  "/dashboard/reports/page": "/dashboard/reports",
+  "/dashboard/chat-history/page": "/dashboard/chat-history",
+  "/dashboard/settings/page": "/dashboard/settings"
+}
