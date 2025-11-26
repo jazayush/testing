@@ -461,7 +461,6 @@ export const ProductTeaserCard = (props: ProductTeaserCardProps) => {
                 <button
                   onClick={() => {
                     setShowConfirmation(false)
-                    setMode("login")
                   }}
                   className="text-[#202020] font-semibold hover:underline"
                 >
