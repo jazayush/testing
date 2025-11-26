@@ -26,7 +26,7 @@ export const ProductTeaserCard = (props: ProductTeaserCardProps) => {
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
-  const [mode, setMode] = useState<"signup" | "login">("signup")
+  // Removed mode state; authentication will determine navigation
 
   const {
     dailyVolume = "1,430,992,688",
@@ -44,17 +44,55 @@ export const ProductTeaserCard = (props: ProductTeaserCardProps) => {
 
   const handleAuthClick = async () => {
     if (!email.trim() || !password.trim()) {
-      setError("Please enter both email and password")
-      return
+      setError("Please enter both email and password");
+      return;
     }
 
-    setIsLoading(true)
-    setError("")
+    setIsLoading(true);
+    setError("");
 
     try {
-      const supabase = createClient()
+      const supabase = createClient();
 
-      if (mode === "signup") {
+      // Check if user already exists in our user_signup table
+      const { data: existingByEmail } = await supabase
+        .from("user_signup")
+        .select("user_id")
+        .eq("email", email.trim())
+        .maybeSingle();
+
+      if (existingByEmail) {
+        // Existing user: attempt sign-in
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password: password.trim(),
+        });
+
+        if (signInError) {
+          setError(signInError.message);
+          setIsLoading(false);
+          return;
+        }
+
+        // Record login details
+        await supabase.from("login_details").insert({
+          user_id: data.user.id,
+          login_session_start_time: new Date().toISOString(),
+        });
+
+        // Redirect based on onboarding status
+        const { data: onboardingData } = await supabase
+          .from("user_onboarding_information")
+          .select("*")
+          .eq("user_id", data.user.id)
+          .single();
+        if (onboardingData) {
+          router.push("/dashboard");
+        } else {
+          router.push("/onboarding");
+        }
+      } else {
+        // New user: sign-up flow
         const { data, error: signUpError } = await supabase.auth.signUp({
           email: email.trim(),
           password: password.trim(),
@@ -62,151 +100,27 @@ export const ProductTeaserCard = (props: ProductTeaserCardProps) => {
             emailRedirectTo:
               process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/onboarding`,
           },
-        })
-
+        });
         if (signUpError) {
-          console.log("[v0] Signup error:", signUpError.message)
-          setError(signUpError.message)
-          setIsLoading(false)
-          return
+          setError(signUpError.message);
+          setIsLoading(false);
+          return;
         }
-
-        console.log("[v0] Signup successful, user:", data.user)
-
-        if (data.user) {
-          const { data: existingByUserId, error: userIdCheckError } = await supabase
-            .from("user_signup")
-            .select("user_id")
-            .eq("user_id", data.user.id)
-            .maybeSingle()
-
-          const { data: existingByEmail, error: emailCheckError } = await supabase
-            .from("user_signup")
-            .select("user_id")
-            .eq("email", email.trim())
-            .maybeSingle()
-
-          console.log("[v0] Existing user by ID:", existingByUserId)
-          console.log("[v0] Existing user by email:", existingByEmail)
-
-          if (!existingByUserId && !existingByEmail) {
-            const { error: insertError } = await supabase.from("user_signup").insert({
-              user_id: data.user.id,
-              email: email.trim(),
-              signup_method: "email",
-              password_hash: "MANAGED_BY_SUPABASE_AUTH",
-              user_join_time: new Date().toISOString(),
-            })
-
-            if (insertError) {
-              console.log("[v0] Error inserting into user_signup:", insertError.message)
-            } else {
-              console.log("[v0] Successfully inserted into user_signup table")
-            }
-          } else {
-            console.log("[v0] User already exists in user_signup table, skipping insert")
-          }
-        }
-
-        setShowConfirmation(true)
-        setIsLoading(false)
-      } else {
-        const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        // Insert into user_signup table
+        await supabase.from("user_signup").insert({
+          user_id: data.user.id,
           email: email.trim(),
-          password: password.trim(),
-        })
-
-        if (signInError) {
-          console.log("[v0] Login error:", signInError.message)
-          setError(signInError.message)
-          setIsLoading(false)
-          return
-        }
-
-        console.log("[v0] Login successful, user:", data.user)
-
-        if (data.user) {
-          const { data: existingByUserId, error: userIdCheckError } = await supabase
-            .from("user_signup")
-            .select("user_id")
-            .eq("user_id", data.user.id)
-            .maybeSingle()
-
-          const { data: existingByEmail, error: emailCheckError } = await supabase
-            .from("user_signup")
-            .select("user_id, email")
-            .eq("email", email.trim())
-            .maybeSingle()
-
-          console.log("[v0] Existing user by ID:", existingByUserId)
-          console.log("[v0] Existing user by email:", existingByEmail)
-
-          if (!existingByUserId && !existingByEmail) {
-            const { error: insertUserError } = await supabase.from("user_signup").insert({
-              user_id: data.user.id,
-              email: email.trim(),
-              signup_method: "email",
-              password_hash: "MANAGED_BY_SUPABASE_AUTH",
-              user_join_time: new Date().toISOString(),
-            })
-
-            if (insertUserError) {
-              console.log("[v0] Error inserting user_signup entry:", insertUserError.message)
-              setError("Failed to create user profile. Please try again.")
-              setIsLoading(false)
-              return
-            }
-
-            console.log("[v0] Successfully inserted user_signup entry")
-          } else if (existingByEmail && existingByEmail.user_id !== data.user.id) {
-            console.log("[v0] Email exists with different user_id, updating record")
-            const { error: updateError } = await supabase
-              .from("user_signup")
-              .update({
-                user_id: data.user.id,
-                signup_method: "email",
-                password_hash: "MANAGED_BY_SUPABASE_AUTH",
-                user_join_time: new Date().toISOString(),
-              })
-              .eq("email", email.trim())
-
-            if (updateError) {
-              console.log("[v0] Error updating user_signup entry:", updateError.message)
-            }
-          } else {
-            console.log("[v0] User already exists in user_signup, skipping insert")
-          }
-
-          const { error: loginError } = await supabase.from("login_details").insert({
-            user_id: data.user.id,
-            login_session_start_time: new Date().toISOString(),
-          })
-
-          if (loginError) {
-            console.log("[v0] Error inserting into login_details:", loginError.message)
-          } else {
-            console.log("[v0] Successfully inserted into login_details")
-          }
-
-          const { data: onboardingData } = await supabase
-            .from("user_onboarding_information")
-            .select("*")
-            .eq("user_id", data.user.id)
-            .single()
-
-          if (onboardingData) {
-            console.log("[v0] User has completed onboarding, redirecting to dashboard")
-            router.push("/dashboard")
-          } else {
-            console.log("[v0] User hasn't completed onboarding, redirecting to onboarding")
-            router.push("/onboarding")
-          }
-        }
+          signup_method: "email",
+          password_hash: "MANAGED_BY_SUPABASE_AUTH",
+          user_join_time: new Date().toISOString(),
+        });
+        // Show confirmation UI
+        setShowConfirmation(true);
       }
     } catch (error: any) {
-      console.error("[v0] Auth error:", error)
-      setError(error.message || "An unexpected error occurred. Please try again.")
-      setIsLoading(false)
+      setError(error.message || "An unexpected error occurred. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   }
 
@@ -403,7 +317,7 @@ export const ProductTeaserCard = (props: ProductTeaserCardProps) => {
                     textShadow: "0 0 40px rgba(244, 164, 96, 0.2), 0 0 80px rgba(245, 176, 115, 0.15)",
                   }}
                 >
-                  {mode === "signup" ? "Get Started with Finance Setu" : "Welcome Back to Finance Setu"}
+                  Get Started with Finance Setu
                 </h2>
 
                 {error && (
@@ -454,124 +368,114 @@ export const ProductTeaserCard = (props: ProductTeaserCardProps) => {
                   </div>
 
                   <div className="w-full md:w-auto flex flex-col sm:flex-row gap-3 sm:gap-4">
-                    <div className="flex flex-col gap-3 w-full sm:w-64">
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="Enter your email"
-                        className="w-full bg-white text-[#202020] placeholder:text-[#999999] rounded-xl sm:rounded-2xl px-4 sm:px-6 py-4 sm:py-5 text-sm sm:text-base border border-[#d0d0d0] focus:outline-none focus:border-[#156d95] transition-colors duration-200"
-                        style={{
-                          fontFamily: "var(--font-figtree), Figtree",
-                        }}
-                      />
-
-                      <input
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Enter your password"
-                        className="w-full bg-white text-[#202020] placeholder:text-[#999999] rounded-xl sm:rounded-2xl px-4 sm:px-6 py-4 sm:py-5 text-sm sm:text-base border border-[#d0d0d0] focus:outline-none focus:border-[#156d95] transition-colors duration-200"
-                        style={{
-                          fontFamily: "var(--font-figtree), Figtree",
-                        }}
-                      />
-                    </div>
-
-                    <button
-                      onClick={handleAuthClick}
-                      disabled={isLoading}
-                      className="bg-[#202020] hover:bg-[#2a2a2a] text-white rounded-xl sm:rounded-2xl px-6 sm:px-8 py-4 sm:py-5 text-sm sm:text-base font-medium transition-colors duration-200 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="Enter your email"
+                      className="w-full bg-white text-[#202020] placeholder:text-[#999999] rounded-xl sm:rounded-2xl px-4 sm:px-6 py-4 sm:py-5 text-sm sm:text-base border border-[#d0d0d0] focus:outline-none focus:border-[#156d95] transition-colors duration-200"
                       style={{
                         fontFamily: "var(--font-figtree), Figtree",
                       }}
-                    >
-                      {isLoading ? "Loading..." : "Continue"}
-                    </button>
-                  </div>
-                </div>
+                    />
 
-                <div className="mt-6 text-center">
-                  <p
-                    className="text-sm text-[#666666]"
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      className="w-full bg-white text-[#202020] placeholder:text-[#999999] rounded-xl sm:rounded-2xl px-4 sm:px-6 py-4 sm:py-5 text-sm sm:text-base border border-[#d0d0d0] focus:outline-none focus:border-[#156d95] transition-colors duration-200"
+                      style={{
+                        fontFamily: "var(--font-figtree), Figtree",
+                      }}
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleAuthClick}
+                    disabled={isLoading}
+                    className="bg-[#202020] hover:bg-[#2a2a2a] text-white rounded-xl sm:rounded-2xl px-6 sm:px-8 py-4 sm:py-5 text-sm sm:text-base font-medium transition-colors duration-200 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{
                       fontFamily: "var(--font-figtree), Figtree",
                     }}
                   >
-                    {mode === "signup" ? "Already have an account?" : "Don't have an account?"}{" "}
-                    <button
-                      onClick={() => {
-                        setMode(mode === "signup" ? "login" : "signup")
-                        setError("")
-                      }}
-                      className="text-[#202020] font-semibold hover:underline"
-                    >
-                      {mode === "signup" ? "Sign In" : "Sign Up"}
-                    </button>
-                  </p>
+                    {isLoading ? "Loading..." : "Continue"}
+                  </button>
                 </div>
-              </>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-8">
-                <div className="bg-white rounded-2xl border border-[#e0e0e0] p-6 sm:p-8 max-w-md w-full shadow-sm">
-                  <div className="flex gap-4 items-start">
-                    <div className="flex-shrink-0 w-12 h-12 bg-[#1a1a1a] rounded-lg flex items-center justify-center">
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path
-                          d="M20 6L9 17L4 12"
-                          stroke="white"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </div>
-                    <div className="flex-1">
-                      <h3
-                        className="text-lg font-semibold text-[#1a1a1a] mb-2"
-                        style={{
-                          fontFamily: "var(--font-space-grotesk), 'Space Grotesk', sans-serif",
-                        }}
-                      >
-                        Check your email to confirm
-                      </h3>
-                      <p
-                        className="text-sm text-[#666666] leading-relaxed"
-                        style={{
-                          fontFamily: "var(--font-figtree), Figtree",
-                        }}
-                      >
-                        You've successfully signed up. Please check your email to confirm your account before signing in
-                        to the Supabase dashboard. The confirmation link expires in 10 minutes.
-                      </p>
-                    </div>
-                  </div>
-                </div>
+              </div>
 
-                <div className="mt-8 text-center">
+            <div className="mt-6 text-center">
+              <p
+                className="text-sm text-[#666666]"
+                style={{
+                  fontFamily: "var(--font-figtree), Figtree",
+                }}
+              >
+                {/* Sign-in/Sign-up toggle removed */}
+              </p>
+            </div>
+          </>
+          ) : (
+          <div className="flex flex-col items-center justify-center py-8">
+            <div className="bg-white rounded-2xl border border-[#e0e0e0] p-6 sm:p-8 max-w-md w-full shadow-sm">
+              <div className="flex gap-4 items-start">
+                <div className="flex-shrink-0 w-12 h-12 bg-[#1a1a1a] rounded-lg flex items-center justify-center">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                      d="M20 6L9 17L4 12"
+                      stroke="white"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3
+                    className="text-lg font-semibold text-[#1a1a1a] mb-2"
+                    style={{
+                      fontFamily: "var(--font-space-grotesk), 'Space Grotesk', sans-serif",
+                    }}
+                  >
+                    Check your email to confirm
+                  </h3>
                   <p
-                    className="text-sm text-[#666666]"
+                    className="text-sm text-[#666666] leading-relaxed"
                     style={{
                       fontFamily: "var(--font-figtree), Figtree",
                     }}
                   >
-                    Already confirmed?{" "}
-                    <button
-                      onClick={() => {
-                        setShowConfirmation(false)
-                        setMode("login")
-                      }}
-                      className="text-[#202020] font-semibold hover:underline"
-                    >
-                      Sign In Now
-                    </button>
+                    You've successfully signed up. Please check your email to confirm your account before signing in
+                    to the Supabase dashboard. The confirmation link expires in 10 minutes.
                   </p>
                 </div>
               </div>
-            )}
+            </div>
+
+            <div className="mt-8 text-center">
+              <p
+                className="text-sm text-[#666666]"
+                style={{
+                  fontFamily: "var(--font-figtree), Figtree",
+                }}
+              >
+                Already confirmed?{" "}
+                <button
+                  onClick={() => {
+                    setShowConfirmation(false)
+                    setMode("login")
+                  }}
+                  className="text-[#202020] font-semibold hover:underline"
+                >
+                  Sign In Now
+                </button>
+              </p>
+            </div>
           </div>
-        </motion.div>
+            )}
       </div>
-    </section>
+    </motion.div>
+      </div >
+    </section >
   )
 }
