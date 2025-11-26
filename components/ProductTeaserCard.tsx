@@ -472,7 +472,8 @@ export const ProductTeaserCard = (props: ProductTeaserCardProps) => {
           </div>
             )}
       </div>
-    </section>
+        </motion.div>
       </div>
+    </section>
   )
 }
