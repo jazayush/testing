@@ -473,5 +473,6 @@ export const ProductTeaserCard = (props: ProductTeaserCardProps) => {
             )}
       </div>
     </section>
+      </div>
   )
 }
